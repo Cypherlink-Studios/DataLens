@@ -59,6 +59,107 @@ public final class SerializationService {
         return yaml.dump(toMap(node));
     }
 
+    // ── SNBT ──────────────────────────────────────────────────────────────────
+
+    /** Serializes a DataNode tree to a Stringified NBT (SNBT) string. */
+    public String toSnbt(DataNode node) {
+        StringBuilder sb = new StringBuilder();
+        appendSnbt(node, sb);
+        return sb.toString();
+    }
+
+    private void appendSnbt(DataNode node, StringBuilder sb) {
+        if (node == null) {
+            sb.append("{}");
+            return;
+        }
+
+        switch (node.getType()) {
+            case COMPOUND -> {
+                sb.append("{");
+                List<DataNode> children = node.getChildren();
+                for (int i = 0; i < children.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    DataNode child = children.get(i);
+                    appendKey(child.getKey(), sb);
+                    sb.append(":");
+                    appendSnbt(child, sb);
+                }
+                sb.append("}");
+            }
+            case LIST -> {
+                sb.append("[");
+                List<DataNode> children = node.getChildren();
+                for (int i = 0; i < children.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    appendSnbt(children.get(i), sb);
+                }
+                sb.append("]");
+            }
+            case BYTE -> sb.append(node.getValue()).append("b");
+            case SHORT -> sb.append(node.getValue()).append("s");
+            case INT -> sb.append(node.getValue());
+            case LONG -> sb.append(node.getValue()).append("L");
+            case FLOAT -> sb.append(node.getValue()).append("f");
+            case DOUBLE -> sb.append(node.getValue()).append("d");
+            case BOOLEAN -> sb.append(Boolean.TRUE.equals(node.getValue()) ? "1b" : "0b");
+            case STRING, UUID, UNKNOWN -> escapeString(node.getValue() != null ? node.getValue().toString() : "", sb);
+            case BYTE_ARRAY -> {
+                sb.append("[B;");
+                byte[] arr = (byte[]) node.getValue();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length; i++) {
+                        if (i > 0) sb.append(",");
+                        sb.append(arr[i]).append("b");
+                    }
+                }
+                sb.append("]");
+            }
+            case INT_ARRAY -> {
+                sb.append("[I;");
+                int[] arr = (int[]) node.getValue();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length; i++) {
+                        if (i > 0) sb.append(",");
+                        sb.append(arr[i]);
+                    }
+                }
+                sb.append("]");
+            }
+            case LONG_ARRAY -> {
+                sb.append("[L;");
+                long[] arr = (long[]) node.getValue();
+                if (arr != null) {
+                    for (int i = 0; i < arr.length; i++) {
+                        if (i > 0) sb.append(",");
+                        sb.append(arr[i]).append("L");
+                    }
+                }
+                sb.append("]");
+            }
+        }
+    }
+
+    private void appendKey(String key, StringBuilder sb) {
+        if (key.matches("^[a-zA-Z0-9_.-]+$") && !key.contains(":")) {
+            sb.append(key);
+        } else {
+            escapeString(key, sb);
+        }
+    }
+
+    private void escapeString(String s, StringBuilder sb) {
+        sb.append("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"' || c == '\\') {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        sb.append("\"");
+    }
+
     // ── Conversion helpers ────────────────────────────────────────────────────
 
     private com.fasterxml.jackson.databind.JsonNode toJacksonNode(DataNode node, ObjectMapper mapper) {

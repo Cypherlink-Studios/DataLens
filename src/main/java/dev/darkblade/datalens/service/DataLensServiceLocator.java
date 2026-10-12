@@ -5,10 +5,13 @@ import dev.darkblade.datalens.core.diff.DiffService;
 import dev.darkblade.datalens.core.edit.EditService;
 import dev.darkblade.datalens.core.inspect.InspectorService;
 import dev.darkblade.datalens.core.serialize.SerializationService;
+import dev.darkblade.datalens.core.export.DiskExportService;
+import dev.darkblade.datalens.core.search.TreeSearchService;
 import dev.darkblade.datalens.core.session.SessionService;
 import dev.darkblade.datalens.core.validate.ValidationService;
 import dev.darkblade.datalens.repository.ChangeLogRepository;
 
+import java.io.File;
 import java.util.Objects;
 
 /**
@@ -28,11 +31,14 @@ public final class DataLensServiceLocator {
     private final DiffService diffService;
     private final SessionService sessionService;
     private final ChangeLogRepository changeLogRepository;
+    private final TreeSearchService treeSearchService;
+    private final DiskExportService diskExportService;
 
     private DataLensServiceLocator(
             Adapter adapter,
             SessionService sessionService,
-            ChangeLogRepository changeLogRepository
+            ChangeLogRepository changeLogRepository,
+            File dataFolder
     ) {
         this.adapter = adapter;
         this.validationService = new ValidationService();
@@ -42,13 +48,19 @@ public final class DataLensServiceLocator {
         this.serializationService = new SerializationService();
         this.diffService = new DiffService();
         this.sessionService = sessionService;
+        this.treeSearchService = new TreeSearchService();
+        this.diskExportService = new DiskExportService(dataFolder != null ? dataFolder : new File("."), this.serializationService);
     }
 
     /**
      * Initialises the service locator. Must be called once during {@code onEnable}.
      */
     public static void init(Adapter adapter, SessionService sessionService, ChangeLogRepository changeLog) {
-        instance = new DataLensServiceLocator(adapter, sessionService, changeLog);
+        init(adapter, sessionService, changeLog, null);
+    }
+
+    public static void init(Adapter adapter, SessionService sessionService, ChangeLogRepository changeLog, File dataFolder) {
+        instance = new DataLensServiceLocator(adapter, sessionService, changeLog, dataFolder);
     }
 
     public static DataLensServiceLocator get() {
@@ -63,4 +75,6 @@ public final class DataLensServiceLocator {
     public DiffService differ() { return diffService; }
     public SessionService sessions() { return sessionService; }
     public ChangeLogRepository changeLog() { return changeLogRepository; }
+    public TreeSearchService searcher() { return treeSearchService; }
+    public DiskExportService exporter() { return diskExportService; }
 }

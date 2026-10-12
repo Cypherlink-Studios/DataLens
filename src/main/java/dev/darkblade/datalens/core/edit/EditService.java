@@ -1,6 +1,7 @@
 package dev.darkblade.datalens.core.edit;
 
 import dev.darkblade.datalens.adapter.common.Adapter;
+import dev.darkblade.datalens.core.session.PlayerSession;
 import dev.darkblade.datalens.core.validate.ValidationService;
 import dev.darkblade.datalens.model.DataNode;
 import dev.darkblade.datalens.model.InspectableObject;
@@ -11,19 +12,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Handles safe editing of {@link DataNode} values within an {@link InspectableObject}.
- *
- * <p>Every edit follows the contract:
- * <ol>
- *   <li>Resolve target node by path</li>
- *   <li>Validate the new value against the node's type</li>
- *   <li>Create a deep-copy snapshot for rollback</li>
- *   <li>Apply the change in memory</li>
- *   <li>Persist via the adapter</li>
- *   <li>On failure → restore snapshot and rethrow</li>
- * </ol>
- *
- * <strong>Write operations must be called on the main server thread.</strong>
+ * Handles safe editing of {@link DataNode} values within an {@link InspectableObject}
+ * or staged within a {@link PlayerSession}.
  */
 public final class EditService {
 
@@ -37,23 +27,79 @@ public final class EditService {
         this.changeLog = Objects.requireNonNull(changeLog);
     }
 
+    // ── Staged Operations (Session-aware) ─────────────────────────────────────
+
     /**
-     * Sets the value at {@code path} to {@code rawValue} (string representation).
-     *
-     * @param object   the target inspectable object
-     * @param path     dot-notation path (e.g. {@code "pdc.myplugin:level"})
-     * @param rawValue the new value as a string; will be coerced to the node's type
-     * @param actor    player name for changelog
-     * @throws EditException if path not found, type invalid, or persist fails
+     * Staged set: modifies the workingCopy of the player session without writing to the world.
      */
-    public void setValue(InspectableObject object, String path, String rawValue, String actor) {
-        DataNode target = resolveOrThrow(object, path);
-        setNodeValue(object, target, path, rawValue, actor);
+    public void setValueStaged(PlayerSession session, String path, String rawValue, String actor) {
+        DataNode target = resolveOrThrow(session.getWorkingCopy(), path);
+        setNodeValueStaged(session, target, path, rawValue, actor);
     }
 
     /**
-     * Sets the value of a specific node directly (used by GUI).
+     * Staged set directly on a DataNode belonging to session.workingCopy.
      */
+    public void setNodeValueStaged(PlayerSession session, DataNode target, String path, String rawValue, String actor) {
+        ValidationResult validation = validator.validate(target.getType(), rawValue);
+        if (!validation.isValid()) {
+            throw new EditException("Validation failed: " + validation.getError().orElse("unknown error"));
+        }
+
+        Object coerced = validator.coerce(target.getType(), rawValue);
+        session.pushHistorySnapshot();
+        target.setValue(coerced);
+        changeLog.log(actor, session.getTarget().getId(), "STAGE_SET", path != null ? path : target.getKey(), String.valueOf(target.getValue()), rawValue);
+    }
+
+    /**
+     * Staged remove: removes a path from session.workingCopy without writing to the world.
+     */
+    public void removeStaged(PlayerSession session, String path, String actor) {
+        Optional<PathResolver.ParentContext> ctx = PathResolver.resolveParent(session.getWorkingCopy(), path);
+        if (ctx.isEmpty()) {
+            throw new EditException("Path not found: " + path);
+        }
+
+        PathResolver.ParentContext pc = ctx.get();
+        session.pushHistorySnapshot();
+
+        boolean removed;
+        if (pc.lastSegment().isIndex()) {
+            removed = pc.parent().removeElement(pc.lastSegment().getIndex());
+        } else {
+            removed = pc.parent().removeChild(pc.lastSegment().getKey());
+        }
+        if (!removed) throw new EditException("Node not found at path: " + path);
+        changeLog.log(actor, session.getTarget().getId(), "STAGE_REMOVE", path, null, null);
+    }
+
+    /**
+     * Applies all staged changes from the session's working copy to the live object in the world.
+     */
+    public void apply(PlayerSession session, String actor) {
+        InspectableObject target = session.getTarget();
+        DataNode workingCopy = session.getWorkingCopy();
+
+        DataNode snapshot = target.getRoot().deepCopy();
+        try {
+            target.setRoot(workingCopy.deepCopy());
+            adapter.writeData(target, target.getRoot());
+            session.setDirty(false);
+            changeLog.log(actor, target.getId(), "APPLY", "root", null, null);
+        } catch (Exception ex) {
+            target.setRoot(snapshot); // rollback target on failure
+            throw new EditException("Persist to world failed — rolled back. Cause: " + ex.getMessage(), ex);
+        }
+    }
+
+    // ── Direct / Legacy Operations ────────────────────────────────────────────
+
+    public void setValue(InspectableObject object, String path, String rawValue, String actor) {
+        DataNode target = resolveOrThrow(object.getRoot(), path);
+        setNodeValue(object, target, path, rawValue, actor);
+    }
+
     public void setNodeValue(InspectableObject object, DataNode target, String path, String rawValue, String actor) {
         ValidationResult validation = validator.validate(target.getType(), rawValue);
         if (!validation.isValid()) {
@@ -69,19 +115,11 @@ public final class EditService {
             adapter.writeData(object, object.getRoot());
             changeLog.log(actor, object.getId(), "SET", path != null ? path : target.getKey(), String.valueOf(oldValue), rawValue);
         } catch (Exception ex) {
-            object.setRoot(snapshot); // rollback
+            object.setRoot(snapshot);
             throw new EditException("Persist failed — rolled back. Cause: " + ex.getMessage(), ex);
         }
     }
 
-    /**
-     * Removes the node at {@code path} from the data tree.
-     *
-     * @param object the target inspectable object
-     * @param path   dot-notation path
-     * @param actor  player name for changelog
-     * @throws EditException if path not found or persist fails
-     */
     public void remove(InspectableObject object, String path, String actor) {
         Optional<PathResolver.ParentContext> ctx = PathResolver.resolveParent(object.getRoot(), path);
         if (ctx.isEmpty()) {
@@ -110,14 +148,10 @@ public final class EditService {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private DataNode resolveOrThrow(InspectableObject object, String path) {
-        return PathResolver.resolve(object.getRoot(), path)
+    private DataNode resolveOrThrow(DataNode root, String path) {
+        return PathResolver.resolve(root, path)
                 .orElseThrow(() -> new EditException("Path not found: " + path));
     }
-
-    // ── Exception ─────────────────────────────────────────────────────────────
 
     public static final class EditException extends RuntimeException {
         public EditException(String msg) { super(msg); }

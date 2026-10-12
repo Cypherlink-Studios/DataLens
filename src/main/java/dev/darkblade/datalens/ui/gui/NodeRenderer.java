@@ -158,8 +158,160 @@ public final class NodeRenderer {
     }
 
     public static ItemStack exportButton() {
-        return namedItem(Material.WRITABLE_BOOK, Component.text("⬇ Export JSON")
-                .color(NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        ItemStack item = new ItemStack(Material.HOPPER);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text("⬇ Export Data")
+                    .color(NamedTextColor.AQUA)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text("Left-click: Print to chat")
+                            .color(NamedTextColor.WHITE)
+                            .decoration(TextDecoration.ITALIC, false),
+                    Component.text("Shift+Click: Save to exports/ disk file")
+                            .color(NamedTextColor.GOLD)
+                            .decoration(TextDecoration.ITALIC, false)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack undoButton(int count) {
+        boolean canUndo = count > 0;
+        ItemStack item = new ItemStack(Material.DISPENSER);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text("↶ Undo")
+                    .color(canUndo ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text(count + " step(s) available")
+                            .color(NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false),
+                    canUndo ? Component.text("Click to undo last change").color(NamedTextColor.DARK_GREEN)
+                            : Component.text("No changes to undo").color(NamedTextColor.DARK_GRAY)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack redoButton(int count) {
+        boolean canRedo = count > 0;
+        ItemStack item = new ItemStack(Material.DROPPER);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text("↷ Redo")
+                    .color(canRedo ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text(count + " step(s) available")
+                            .color(NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false),
+                    canRedo ? Component.text("Click to redo change").color(NamedTextColor.DARK_GREEN)
+                            : Component.text("No changes to redo").color(NamedTextColor.DARK_GRAY)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack searchButton(boolean active, String query) {
+        ItemStack item = new ItemStack(Material.COMPASS);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text(active ? "🔍 Filter: " + query : "🔍 Search Tree")
+                    .color(active ? NamedTextColor.GOLD : NamedTextColor.AQUA)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text(active ? "Filter active: " + query : "Search by key or value")
+                            .color(NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false),
+                    Component.text("Click to enter search query").color(NamedTextColor.DARK_GREEN)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack clearFilterButton() {
+        ItemStack item = new ItemStack(Material.MILK_BUCKET);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text("✕ Clear Filter")
+                    .color(NamedTextColor.RED)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text("Click to return to tree view")
+                            .color(NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack applyButton(boolean dirty) {
+        ItemStack item = new ItemStack(dirty ? Material.EMERALD : Material.GRAY_DYE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(TextUtil.legacy(Component.text(dirty ? "✔ Apply Changes (*Unsaved*)" : "✔ Changes Applied")
+                    .color(dirty ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY)
+                    .decoration(TextDecoration.BOLD, true)
+                    .decoration(TextDecoration.ITALIC, false)));
+            meta.setLore(TextUtil.legacyList(List.of(
+                    Component.text(dirty ? "Commit staged edits to world" : "Working copy clean")
+                            .color(NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false),
+                    dirty ? Component.text("Click to persist").color(NamedTextColor.DARK_GREEN)
+                          : Component.text("No pending edits").color(NamedTextColor.DARK_GRAY)
+            )));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public static ItemStack renderSearchResult(dev.darkblade.datalens.core.search.TreeSearchService.SearchResult result) {
+        DataNode node = result.node();
+        ItemStack item = new ItemStack(materialFor(node.getType()));
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        Component name = Component.text(node.getKey())
+                .color(colorFor(node.getType()))
+                .decoration(TextDecoration.BOLD, true)
+                .decoration(TextDecoration.ITALIC, false);
+        meta.setDisplayName(TextUtil.legacy(name));
+
+        List<Component> lore = new java.util.ArrayList<>();
+        lore.add(Component.text("[" + node.getType().label() + "]")
+                .color(NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Path: ")
+                .color(NamedTextColor.GRAY)
+                .append(Component.text(result.path()).color(NamedTextColor.AQUA))
+                .decoration(TextDecoration.ITALIC, false));
+
+        if (!node.getType().isContainer()) {
+            lore.add(Component.text("Value: " + valueString(node))
+                    .color(NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.empty());
+            lore.add(Component.text("Shift+Click to edit  |  Right-Click to delete")
+                    .color(NamedTextColor.DARK_GREEN).decoration(TextDecoration.ITALIC, true));
+        } else {
+            lore.add(Component.empty());
+            lore.add(Component.text("Left-click to jump to container")
+                    .color(NamedTextColor.DARK_GREEN).decoration(TextDecoration.ITALIC, true));
+        }
+
+        meta.setLore(TextUtil.legacyList(lore));
+        item.setItemMeta(meta);
+        return item;
     }
 
     public static ItemStack filler() {

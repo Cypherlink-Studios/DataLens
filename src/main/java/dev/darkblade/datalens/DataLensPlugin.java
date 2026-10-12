@@ -63,7 +63,7 @@ public final class DataLensPlugin extends JavaPlugin implements DataLensAPI {
         // Init services
         SessionService sessions = new SessionService(ttlSeconds, maxSessions);
         ChangeLogRepository changeLog = new ChangeLogRepository(getDataFolder(), getLogger(), logEnabled);
-        DataLensServiceLocator.init(adapter, sessions, changeLog);
+        DataLensServiceLocator.init(adapter, sessions, changeLog, getDataFolder());
 
         // Register listeners
         getServer().getPluginManager().registerEvents(

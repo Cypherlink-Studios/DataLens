@@ -26,6 +26,10 @@ public final class InspectableObject {
         this.liveReference = liveReference;
     }
 
+    public InspectableObject(InspectableType type, String id, DataNode root, @Nullable Object liveReference) {
+        this(type, id, null, root, liveReference);
+    }
+
     public InspectableType getType() { return type; }
     public String getId() { return id; }
 
